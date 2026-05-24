@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Interval Timer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --act-hue: 28;
+      --rest-hue: 158;
+      --bg-light: #faf8f5;
+      --card-bg: rgba(255,255,255,0.85);
+      --text-main: #1a1714;
+      --text-sub: #7a7570;
+      --border: rgba(0,0,0,0.08);
+      --ring-size: min(54vw, 260px);
+      --ring-stroke: 13;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', sans-serif;
+      background: var(--bg-light);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      transition: background 0.6s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body.phase-act { background: #fff8f0; }
+    body.phase-rest { background: #f0fdf6; }
+
+    /* ───── TOP BAR ───── */
+    .topbar {
+      width: 100%;
+      max-width: 540px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 20px 0;
+    }
+    .icon-btn {
+      width: 44px; height: 44px;
+      border: none; background: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      color: var(--text-sub);
+      transition: background 0.2s, color 0.2s, transform 0.15s;
+    }
+    .icon-btn:active { transform: scale(0.9); }
+    .icon-btn:hover { background: rgba(0,0,0,0.06); color: var(--text-main); }
+    #btn-settings:hover { transform: rotate(40deg); }
+    #btn-settings:active { transform: rotate(40deg) scale(0.9); }
+
+    /* ───── MAIN LAYOUT ───── */
+    .main {
+      width: 100%;
+      max-width: 540px;
+      padding: 12px 20px 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* ───── PHASE LABEL ───── */
+    .phase-label {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-sub);
+      height: 20px;
+      transition: color 0.5s;
+    }
+    body.phase-act .phase-label { color: hsl(var(--act-hue), 80%, 45%); }
+    body.phase-rest .phase-label { color: hsl(var(--rest-hue), 60%, 38%); }
+
+    /* ───── RING ───── */
+    .ring-wrap {
+      position: relative;
+      width: var(--ring-size);
+      height: var(--ring-size);
+      flex-shrink: 0;
+    }
+    .ring-wrap svg {
+      width: 100%; height: 100%;
+      overflow: visible;
+    }
+    .ring-bg { transition: stroke 0.5s; }
+    .ring-progress {
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.85s cubic-bezier(0.1,0.8,0.25,1), stroke 0.5s;
+    }
+    .ring-progress.instant { transition: stroke-dashoffset 0s, stroke 0.5s !important; }
+    body.phase-act .ring-bg { stroke: hsl(var(--act-hue), 80%, 92%); }
+    body.phase-rest .ring-bg { stroke: hsl(var(--rest-hue), 60%, 90%); }
+    body.phase-act .ring-progress { stroke: hsl(var(--act-hue), 80%, 50%); }
+    body.phase-rest .ring-progress { stroke: hsl(var(--rest-hue), 60%, 42%); }
+
+    .ring-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2px;
+    }
+    .time-display {
+      font-family: 'BIZ UDPGothic', monospace;
+      font-size: clamp(40px, 12vw, 64px);
+      font-weight: 500;
+      color: var(--text-main);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      transition: color 0.5s;
+    }
+    .time-unit {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: var(--text-sub);
+    }
+
+    /* ───── CYCLE COUNTER ───── */
+    .cycle-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: white;
+      border: 1.5px solid var(--border);
+      border-radius: 99px;
+      padding: 6px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-sub);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .cycle-current {
+      font-size: 17px;
+      font-family: 'BIZ UDPGothic', monospace;
+      color: var(--text-main);
+    }
+
+    /* ───── CONTROLS ───── */
+    .controls {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .btn-reset {
+      flex: 1;
+      height: 54px;
+      border: none;
+      border-radius: 16px;
+      background: #ece9e4;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-reset:active { transform: scale(0.96); background: #ddd9d3; }
+    .btn-toggle {
+      flex: 1;
+      height: 54px;
+      border: none;
+      border-radius: 16px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      color: white;
+      transition: background 0.3s, transform 0.15s;
+    }
+    .btn-toggle:active { transform: scale(0.96); }
+    body.phase-act .btn-toggle { background: hsl(var(--act-hue), 80%, 50%); }
+    body.phase-rest .btn-toggle { background: hsl(var(--rest-hue), 60%, 42%); }
+
+
+    /* ───── COMPLETE SCREEN ───── */
+    .complete-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px 0;
+      animation: scaleUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    .complete-screen.show { display: flex; }
+    @keyframes scaleUp {
+      from { opacity: 0; transform: scale(0.94); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .complete-stars {
+      display: flex;
+      gap: 12px;
+      font-size: 48px;
+    }
+    .star { display: inline-block; animation: floatY 3s ease-in-out infinite; }
+    .star:nth-child(2) { animation-delay: 0.4s; font-size: 32px; }
+    .star:nth-child(3) { animation-delay: 0.8s; font-size: 38px; }
+    @keyframes floatY {
+      0%,100% { transform: translateY(-8px); }
+      50% { transform: translateY(8px); }
+    }
+    .complete-title {
+      font-size: 36px;
+      font-weight: 900;
+      color: hsl(var(--act-hue), 70%, 40%);
+    }
+    .complete-summary {
+      background: white;
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      padding: 20px 36px;
+      text-align: center;
+    }
+    .complete-summary-label { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; color: var(--text-sub); }
+    .complete-summary-val { font-size: 28px; font-weight: 900; font-family: 'BIZ UDPGothic', monospace; margin-top: 4px; }
+    .btn-restart {
+      width: 100%;
+      max-width: 300px;
+      height: 54px;
+      border: none;
+      border-radius: 16px;
+      background: hsl(var(--act-hue), 80%, 50%);
+      color: white;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s;
+      box-shadow: 0 4px 16px hsl(var(--act-hue),80%,70%);
+    }
+    .btn-restart:active { transform: scale(0.96); }
+
+    /* ───── MODAL OVERLAY ───── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-sheet {
+      width: 100%;
+      max-width: 540px;
+      background: #faf8f5;
+      border-radius: 28px 28px 0 0;
+      max-height: 92dvh;
+      overflow-y: auto;
+      padding: 0 0 40px;
+      animation: slideUp 0.32s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .modal-handle {
+      width: 40px; height: 4px;
+      background: #ccc; border-radius: 99px;
+      margin: 14px auto 0;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 17px; font-weight: 700;
+    }
+    .modal-close {
+      width: 32px; height: 32px;
+      border: none; background: #fff3e8; border-radius: 50%;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: hsl(var(--act-hue), 70%, 45%);
+      transition: background 0.2s;
+    }
+    .modal-close:hover { background: #fde0c0; }
+
+    /* ───── SETTINGS SECTIONS ───── */
+    .settings-body { padding: 0 20px; }
+    .section {
+      margin-top: 24px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-sub);
+      margin-bottom: 10px;
+      padding-left: 2px;
+    }
+    .section-card {
+      background: white;
+      border-radius: 18px;
+      border: 1.5px solid var(--border);
+      overflow: hidden;
+    }
+    .section-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      gap: 12px;
+    }
+    .section-row + .section-row {
+      border-top: 1px solid var(--border);
+    }
+    .row-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      flex-shrink: 0;
+    }
+    .row-sub {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 1px;
+    }
+
+    /* ───── TIME PICKER ───── */
+    .time-picker {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .time-picker-unit {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .time-picker-unit label {
+      font-size: 11px; color: var(--text-sub); font-weight: 600;
+    }
+    .stepper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f2efe9;
+      border-radius: 14px;
+      padding: 6px 10px;
+      gap: 2px;
+    }
+    .stepper-val {
+      font-family: 'BIZ UDPGothic', monospace;
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--text-main);
+      min-width: 2.2ch;
+      text-align: center;
+      line-height: 1.1;
+    }
+    .stepper-btns {
+      display: flex;
+      gap: 4px;
+    }
+    .step-btn {
+      border: none;
+      background: #fff3e8;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: hsl(var(--act-hue), 70%, 40%);
+      padding: 3px 6px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .step-btn:active { background: #fde0c0; }
+
+    /* ───── SOUND SELECT ───── */
+    .sound-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .sound-chip {
+      border: 1.5px solid var(--border);
+      background: white;
+      border-radius: 99px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .sound-chip.active {
+      border-color: hsl(var(--act-hue), 80%, 50%);
+      background: hsl(var(--act-hue), 80%, 50%);
+      color: white;
+    }
+    .sound-chip:active { transform: scale(0.95); }
+
+    /* ───── TOGGLE SWITCH ───── */
+    .toggle-switch {
+      position: relative;
+      width: 50px; height: 28px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { display: none; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: #d5d0cb;
+      border-radius: 99px;
+      cursor: pointer;
+      transition: background 0.25s;
+    }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 22px; height: 22px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .toggle-switch input:checked + .toggle-track { background: hsl(var(--act-hue), 80%, 50%); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(22px); }
+
+    /* ───── INTERVAL EVENTS LIST ───── */
+    .events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .event-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .event-item:last-child { border-bottom: none; }
+    .event-item-label { flex: 1; font-size: 13px; font-weight: 600; color: var(--text-main); }
+    .event-item-sub { font-size: 11px; color: var(--text-sub); margin-top: 1px; }
+    .event-delete {
+      width: 28px; height: 28px;
+      border: none; background: #f5e8e8; border-radius: 50%;
+      color: #c0594a; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 700;
+      transition: background 0.15s;
+    }
+    .event-delete:active { background: #eeccc8; }
+    .add-event-row {
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .add-event-row label { font-size: 13px; font-weight: 600; color: var(--text-sub); }
+
+    /* mini stepper for event add */
+    .mini-stepper {
+      display: flex; align-items: center; gap: 4px;
+      background: #f2efe9;
+      border-radius: 10px;
+      padding: 4px 8px;
+    }
+    .mini-step-btn {
+      border: none; background: none;
+      font-size: 16px; font-weight: 700; color: hsl(var(--act-hue), 70%, 45%);
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    .mini-step-btn:active { color: hsl(var(--act-hue), 80%, 35%); }
+    .mini-val {
+      font-family: 'BIZ UDPGothic', monospace;
+      font-size: 15px;
+      min-width: 2.5ch; text-align: center;
+    }
+    .add-btn {
+      border: none;
+      background: hsl(var(--act-hue), 80%, 50%);
+      color: white;
+      border-radius: 10px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 13px; font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .add-btn:active { opacity: 0.8; }
+
+    /* ───── APPLY BTN ───── */
+    .apply-btn {
+      display: block;
+      width: calc(100% - 40px);
+      margin: 28px 20px 0;
+      height: 54px;
+      border: none;
+      border-radius: 16px;
+      background: hsl(195, 80%, 45%);
+      color: white;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .apply-btn:active { transform: scale(0.98); opacity: 0.9; }
+
+    /* ───── PRESETS ───── */
+    .preset-row {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      padding: 0 18px 14px;
+    }
+    .preset-chip {
+      border: 1.5px solid var(--border);
+      background: white;
+      border-radius: 99px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .preset-chip.active {
+      border-color: hsl(var(--act-hue), 80%, 50%);
+      background: hsl(var(--act-hue), 80%, 50%);
+      color: white;
+    }
+    .preset-chip:active { transform: scale(0.95); }
+
+    /* ───── COUNTDOWN SELECT ───── */
+    .cd-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+
+    /* ───── 休憩セクション専用カラー ───── */
+    .rest-section .step-btn {
+      background: #e8f8f0;
+      color: hsl(var(--rest-hue), 60%, 35%);
+    }
+    .rest-section .step-btn:active { background: #c5edd9; }
+    .rest-section .mini-step-btn { color: hsl(var(--rest-hue), 60%, 38%); }
+    .rest-section .mini-step-btn:active { color: hsl(var(--rest-hue), 60%, 28%); }
+    .rest-section .add-btn { background: hsl(var(--rest-hue), 55%, 42%); }
+    .rest-section .preset-chip.active {
+      border-color: hsl(var(--rest-hue), 55%, 42%);
+      background: hsl(var(--rest-hue), 55%, 42%);
+    }
+    .rest-section .sound-chip.active {
+      border-color: hsl(var(--rest-hue), 55%, 42%);
+      background: hsl(var(--rest-hue), 55%, 42%);
+    }
+    .rest-section .toggle-switch input:checked + .toggle-track {
+      background: hsl(var(--rest-hue), 55%, 42%);
+    }
+    .rest-section .preview-btn { border-color: hsl(var(--rest-hue), 40%, 80%); color: hsl(var(--rest-hue), 55%, 42%); }
+    .rest-section .stepper { background: #eef8f3; }
+    /* scrollbar hide */
+    .modal-sheet::-webkit-scrollbar { display: none; }
+
+    /* ───── SOUND PREVIEW BTN ───── */
+    .preview-btn {
+      width: 28px; height: 28px;
+      border: 1.5px solid var(--border);
+      background: white; border-radius: 50%;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--text-sub);
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .preview-btn:active { background: #ece9e4; }
+  </style>
+</head>
+<body class="phase-act">
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <button class="icon-btn" id="btn-settings" aria-label="設定">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+  </button>
+  <button class="icon-btn" id="btn-volume" aria-label="消音">
+    <svg id="volume-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+  </button>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="timer-main">
+  <div class="phase-label" id="phase-label">活動（アクティビティ）</div>
+
+  <!-- RING -->
+  <div class="ring-wrap">
+    <svg id="ring-svg" viewBox="0 0 300 300">
+      <circle id="ring-bg" class="ring-bg" cx="150" cy="150" r="135" fill="none" stroke-width="13"
+        transform="rotate(-90 150 150)"/>
+      <circle id="ring-prog" class="ring-progress" cx="150" cy="150" r="135" fill="none"
+        stroke-width="13" stroke-dasharray="848.23" stroke-dashoffset="0"
+        transform="rotate(-90 150 150)"/>
+    </svg>
+    <div class="ring-center">
+      <div class="time-display" id="time-disp">00:30</div>
+
+    </div>
+  </div>
+
+  <!-- CYCLE -->
+  <div class="cycle-badge">
+    <span>セット</span>
+    <span class="cycle-current" id="cycle-cur">0</span>
+    <span>/</span>
+    <span id="cycle-total">3</span>
+  </div>
+
+  <!-- PROGRESS EVENT DOTS -->
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <button class="btn-reset" id="btn-reset">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      リセット
+    </button>
+    <button class="btn-toggle" id="btn-toggle">
+      <svg id="toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      <span id="toggle-text">スタート</span>
+    </button>
+  </div>
+</div>
+
+<!-- COMPLETE SCREEN -->
+<div class="main" id="complete-main" style="display:none">
+  <div class="complete-screen show">
+    <div class="complete-stars">
+      <span class="star">✨</span>
+      <span class="star">⭐</span>
+      <span class="star">✨</span>
+    </div>
+    <div class="complete-title">おつかれさま〜♪</div>
+    <div class="complete-summary">
+      <div class="complete-summary-label">達成セット数</div>
+      <div class="complete-summary-val" id="complete-val">0 / 3 セット</div>
+    </div>
+    <button class="btn-restart" id="btn-restart">もう一度行う</button>
+  </div>
+</div>
+
+<!-- ========== SETTINGS MODAL ========== -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span>タイマー設定</span>
+      <button class="modal-close" id="btn-close-settings">✕</button>
+    </div>
+    <div class="settings-body">
+      <!-- セット数 -->
+      <div class="section">
+        <div class="section-title">目標セット数</div>
+        <div class="section-card">
+          <div class="section-row">
+            <div>
+              <div class="row-label">セット数</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="mini-stepper">
+                <button class="mini-step-btn" id="cycle-minus">−</button>
+                <span class="mini-val" id="cycle-val-disp">3</span>
+                <button class="mini-step-btn" id="cycle-plus">＋</button>
+              </div>
+            </div>
+          </div>
+          <div class="preset-row" id="cycle-presets"></div>
+        </div>
+      </div>
+
+      <!-- 活動時間 -->
+      <div class="section">
+        <div class="section-title">🔥 活動（アクティビティ）時間</div>
+        <div class="section-card">
+          <div class="section-row" style="justify-content:flex-start">
+            <div class="time-picker">
+              <div class="time-picker-unit">
+                <div class="stepper">
+                  <div class="stepper-val" id="act-min-val">0</div>
+                  <div class="stepper-btns">
+                    <button class="step-btn" data-target="act-min" data-delta="-10">-10</button>
+                    <button class="step-btn" data-target="act-min" data-delta="-1">-1</button>
+                    <button class="step-btn" data-target="act-min" data-delta="1">+1</button>
+                    <button class="step-btn" data-target="act-min" data-delta="10">+10</button>
+                  </div>
+                </div>
+                <label>分</label>
+              </div>
+              <div style="font-size:20px;font-weight:300;color:var(--text-sub);padding-bottom:16px">:</div>
+              <div class="time-picker-unit">
+                <div class="stepper">
+                  <div class="stepper-val" id="act-sec-val">30</div>
+                  <div class="stepper-btns">
+                    <button class="step-btn" data-target="act-sec" data-delta="-10">-10</button>
+                    <button class="step-btn" data-target="act-sec" data-delta="-5">-5</button>
+                    <button class="step-btn" data-target="act-sec" data-delta="5">+5</button>
+                    <button class="step-btn" data-target="act-sec" data-delta="10">+10</button>
+                  </div>
+                </div>
+                <label>秒</label>
+              </div>
+            </div>
+          </div>
+          <div class="preset-row" id="act-presets"></div>
+
+          <!-- 途中経過イベント -->
+          <div class="section-row" style="flex-direction:column;align-items:flex-start;gap:10px;border-top:1px solid var(--border)">
+            <div class="row-label">途中経過の音</div>
+            <!-- 一定間隔 -->
+            <div style="width:100%">
+              <div style="font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px">一定間隔（〇秒ごと）</div>
+              <div class="section-card" style="border-radius:12px">
+                <div class="section-row" style="padding:10px 14px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">間隔で鳴らす</div>
+                    <div class="row-sub">設定した間隔で音が出ます</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="act-interval-enabled">
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div id="act-interval-opts" style="padding:0 14px 12px;display:none;gap:10px;flex-direction:column">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--text-sub)">間隔：</span>
+                    <div class="mini-stepper">
+                      <button class="mini-step-btn" id="act-iv-min-minus">−</button>
+                      <span class="mini-val" id="act-iv-min">0</span>
+                      <button class="mini-step-btn" id="act-iv-min-plus">＋</button>
+                    </div><span style="font-size:12px;color:var(--text-sub)">分</span>
+                    <div class="mini-stepper">
+                      <button class="mini-step-btn" id="act-iv-sec-minus">−</button>
+                      <span class="mini-val" id="act-iv-sec">30</span>
+                      <button class="mini-step-btn" id="act-iv-sec-plus">＋</button>
+                    </div><span style="font-size:12px;color:var(--text-sub)">秒</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--text-sub)">音：</span>
+                    <div class="sound-chips" id="act-iv-sound"></div>
+                    <button class="preview-btn" id="act-iv-preview" title="試し聴き">▶</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 終わり〇〇前 -->
+            <div style="width:100%">
+              <div style="font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px">終わりの〇〇前に鳴らす（複数可）</div>
+              <div class="section-card" style="border-radius:12px">
+                <div class="events-list" id="act-before-list"></div>
+                <!-- 追加フォーム -->
+                <div class="add-event-row">
+                  <span style="font-size:12px;font-weight:600;color:var(--text-sub)">残り</span>
+                  <div class="mini-stepper">
+                    <button class="mini-step-btn" id="act-bf-min-minus">−</button>
+                    <span class="mini-val" id="act-bf-min">0</span>
+                    <button class="mini-step-btn" id="act-bf-min-plus">＋</button>
+                  </div><span style="font-size:12px;color:var(--text-sub)">分</span>
+                  <div class="mini-stepper">
+                    <button class="mini-step-btn" id="act-bf-sec-minus">−</button>
+                    <span class="mini-val" id="act-bf-sec">10</span>
+                    <button class="mini-step-btn" id="act-bf-sec-plus">＋</button>
+                  </div><span style="font-size:12px;color:var(--text-sub)">秒前</span>
+                  <div class="sound-chips" id="act-bf-sound"></div>
+                  <button class="preview-btn" id="act-bf-preview" title="試し聴き">▶</button>
+                  <button class="add-btn" id="act-bf-add">＋追加</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- カウントダウン -->
+          <div class="section-row" style="flex-direction:column;align-items:flex-start;gap:10px;border-top:1px solid var(--border)">
+            <div class="row-label">カウントダウン設定</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%">
+              <span style="font-size:12px;font-weight:600;color:var(--text-sub)">残り</span>
+              <div class="sound-chips" id="act-cd-len"></div>
+              <span style="font-size:12px;color:var(--text-sub)">秒からカウントダウン</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%">
+              <span style="font-size:12px;font-weight:600;color:var(--text-sub)">音：</span>
+              <div class="sound-chips" id="act-cd-sound"></div>
+              <button class="preview-btn" id="act-cd-preview" title="試し聴き">▶</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;width:100%">
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="act-ringback-enabled">
+                <span class="toggle-track"></span>
+              </label>
+              <div>
+                <div style="font-size:13px;font-weight:600">着信音モード</div>
+                <div class="row-sub">終了直前にメロディーがしばらく鳴ります</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 休憩時間 -->
+      <div class="section rest-section">
+        <div class="section-title">休憩（レスト）時間</div>
+        <div class="section-card">
+          <div class="section-row" style="justify-content:flex-start">
+            <div class="time-picker">
+              <div class="time-picker-unit">
+                <div class="stepper">
+                  <div class="stepper-val" id="rest-min-val">0</div>
+                  <div class="stepper-btns">
+                    <button class="step-btn" data-target="rest-min" data-delta="-10">-10</button>
+                    <button class="step-btn" data-target="rest-min" data-delta="-1">-1</button>
+                    <button class="step-btn" data-target="rest-min" data-delta="1">+1</button>
+                    <button class="step-btn" data-target="rest-min" data-delta="10">+10</button>
+                  </div>
+                </div>
+                <label>分</label>
+              </div>
+              <div style="font-size:20px;font-weight:300;color:var(--text-sub);padding-bottom:16px">:</div>
+              <div class="time-picker-unit">
+                <div class="stepper">
+                  <div class="stepper-val" id="rest-sec-val">30</div>
+                  <div class="stepper-btns">
+                    <button class="step-btn" data-target="rest-sec" data-delta="-10">-10</button>
+                    <button class="step-btn" data-target="rest-sec" data-delta="-5">-5</button>
+                    <button class="step-btn" data-target="rest-sec" data-delta="5">+5</button>
+                    <button class="step-btn" data-target="rest-sec" data-delta="10">+10</button>
+                  </div>
+                </div>
+                <label>秒</label>
+              </div>
+            </div>
+          </div>
+          <div class="preset-row" id="rest-presets"></div>
+
+          <!-- 途中経過イベント (休憩) -->
+          <div class="section-row" style="flex-direction:column;align-items:flex-start;gap:10px;border-top:1px solid var(--border)">
+            <div class="row-label">途中経過の音</div>
+            <div style="width:100%">
+              <div style="font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px">一定間隔（〇秒ごと）</div>
+              <div class="section-card" style="border-radius:12px">
+                <div class="section-row" style="padding:10px 14px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">間隔で鳴らす</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="rest-interval-enabled">
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div id="rest-interval-opts" style="padding:0 14px 12px;display:none;gap:10px;flex-direction:column">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--text-sub)">間隔：</span>
+                    <div class="mini-stepper">
+                      <button class="mini-step-btn" id="rest-iv-min-minus">−</button>
+                      <span class="mini-val" id="rest-iv-min">0</span>
+                      <button class="mini-step-btn" id="rest-iv-min-plus">＋</button>
+                    </div><span style="font-size:12px;color:var(--text-sub)">分</span>
+                    <div class="mini-stepper">
+                      <button class="mini-step-btn" id="rest-iv-sec-minus">−</button>
+                      <span class="mini-val" id="rest-iv-sec">30</span>
+                      <button class="mini-step-btn" id="rest-iv-sec-plus">＋</button>
+                    </div><span style="font-size:12px;color:var(--text-sub)">秒</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--text-sub)">音：</span>
+                    <div class="sound-chips" id="rest-iv-sound"></div>
+                    <button class="preview-btn" id="rest-iv-preview" title="試し聴き">▶</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="width:100%">
+              <div style="font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px">終わりの〇〇前に鳴らす（複数可）</div>
+              <div class="section-card" style="border-radius:12px">
+                <div class="events-list" id="rest-before-list"></div>
+                <div class="add-event-row">
+                  <span style="font-size:12px;font-weight:600;color:var(--text-sub)">残り</span>
+                  <div class="mini-stepper">
+                    <button class="mini-step-btn" id="rest-bf-min-minus">−</button>
+                    <span class="mini-val" id="rest-bf-min">0</span>
+                    <button class="mini-step-btn" id="rest-bf-min-plus">＋</button>
+                  </div><span style="font-size:12px;color:var(--text-sub)">分</span>
+                  <div class="mini-stepper">
+                    <button class="mini-step-btn" id="rest-bf-sec-minus">−</button>
+                    <span class="mini-val" id="rest-bf-sec">10</span>
+                    <button class="mini-step-btn" id="rest-bf-sec-plus">＋</button>
+                  </div><span style="font-size:12px;color:var(--text-sub)">秒前</span>
+                  <div class="sound-chips" id="rest-bf-sound"></div>
+                  <button class="preview-btn" id="rest-bf-preview" title="試し聴き">▶</button>
+                  <button class="add-btn" id="rest-bf-add">＋追加</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 休憩 カウントダウン -->
+          <div class="section-row" style="flex-direction:column;align-items:flex-start;gap:10px;border-top:1px solid var(--border)">
+            <div class="row-label">カウントダウン設定</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%">
+              <span style="font-size:12px;font-weight:600;color:var(--text-sub)">残り</span>
+              <div class="sound-chips" id="rest-cd-len"></div>
+              <span style="font-size:12px;color:var(--text-sub)">秒からカウントダウン</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%">
+              <span style="font-size:12px;font-weight:600;color:var(--text-sub)">音：</span>
+              <div class="sound-chips" id="rest-cd-sound"></div>
+              <button class="preview-btn" id="rest-cd-preview" title="試し聴き">▶</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;width:100%">
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="rest-ringback-enabled">
+                <span class="toggle-track"></span>
+              </label>
+              <div>
+                <div style="font-size:13px;font-weight:600">着信音モード</div>
+                <div class="row-sub">終了直前にメロディーがしばらく鳴ります</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /settings-body -->
+
+    <button class="apply-btn" id="btn-apply-settings">設定を適用して戻る</button>
+  </div>
+</div>
+
+<script>
+
+// ─────────────────────────────────────────
+// SOUND ENGINE
+// ─────────────────────────────────────────
+let actx = null;
+function getACtx() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+
+// SOUND TYPES
+// 'pip'   : 短いビープ (運動向け)
+// 'bell'  : 柔らかいベル音 (~1s)
+// 'chime' : 和音チャイム (~1.5s)
+// 'ringback' : 着信風メロディー (~4s)
+// 'fanfare' : 完了ファンファーレ
+
+function playSound(type) {
+  if (state.muted) return;
+  const ctx = getACtx();
+  const now = ctx.currentTime;
+
+  const makeOsc = (freq, gain, start, dur, wave = 'sine', detune = 0) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = wave;
+    o.frequency.value = freq;
+    o.detune.value = detune;
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0, start);
+    g.gain.linearRampToValueAtTime(gain, start + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    o.start(start); o.stop(start + dur + 0.05);
+  };
+
+  if (type === 'pip') {
+    makeOsc(880, 0.12, now, 0.12, 'square');
+  }
+  else if (type === 'bell') {
+    makeOsc(523.25, 0.14, now, 1.0, 'sine');
+    makeOsc(1046.5, 0.07, now, 0.8, 'sine');
+    makeOsc(1318.5, 0.05, now, 0.6, 'sine');
+  }
+  else if (type === 'chime') {
+    [[392, 0.10], [523.25, 0.10], [659.25, 0.08], [783.99, 0.06]].forEach(([f, g], i) => {
+      makeOsc(f, g, now + i * 0.14, 1.4, 'sine');
+    });
+  }
+  else if (type === 'countdown_pip') {
+    makeOsc(660, 0.10, now, 0.10, 'square');
+  }
+  else if (type === 'countdown_bell') {
+    makeOsc(880, 0.12, now, 0.4, 'sine');
+    makeOsc(1760, 0.06, now, 0.3, 'sine');
+  }
+  else if (type === 'countdown_chime') {
+    makeOsc(523.25, 0.10, now, 0.5, 'sine');
+    makeOsc(659.25, 0.08, now + 0.05, 0.45, 'sine');
+  }
+  else if (type === 'ringback') {
+    // Nokia-ish simple melody: G A G E - C D C
+    const notes = [392,440,392,330, 262,294,262];
+    const durs  = [0.25,0.25,0.25,0.5, 0.25,0.25,0.5];
+    let t = now;
+    notes.forEach((f, i) => {
+      makeOsc(f, 0.15, t, durs[i] * 0.9, 'square');
+      t += durs[i];
+    });
+    // repeat once
+    t += 0.3;
+    notes.forEach((f, i) => {
+      makeOsc(f, 0.15, t, durs[i] * 0.9, 'square');
+      t += durs[i];
+    });
+  }
+  else if (type === 'fanfare') {
+    [[523.25,0],[659.25,0.12],[783.99,0.24],[1046.5,0.36]].forEach(([f,delay]) => {
+      makeOsc(f, 0.12, now + delay, 1.0, 'sine');
+    });
+  }
+  else if (type === 'switch') {
+    makeOsc(523.25, 0.14, now, 0.7, 'sine');
+    makeOsc(659.25, 0.10, now + 0.08, 0.6, 'sine');
+  }
+}
+
+// Sound definitions
+const SOUND_DEFS = [
+  { id: 'pip',   label: 'ピッ',   soundType: 'pip' },
+  { id: 'bell',  label: 'ベル',   soundType: 'bell' },
+  { id: 'chime', label: 'チャイム', soundType: 'chime' },
+];
+const CD_SOUND_DEFS = [
+  { id: 'pip',   label: 'ピッ',   soundType: 'countdown_pip' },
+  { id: 'bell',  label: 'ベル',   soundType: 'countdown_bell' },
+  { id: 'chime', label: 'チャイム', soundType: 'countdown_chime' },
+];
+
+// ─────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────
+const state = {
+  muted: false,
+  // timer
+  phase: 'activity',   // 'activity' | 'rest'
+  timeLeft: 30,
+  isActive: false,
+  isStarted: false,
+  completedCycles: 0,
+  isCompleted: false,
+
+  // settings - durations
+  act: { min: 0, sec: 30 },
+  rest: { min: 0, sec: 30 },
+  targetCycles: 3,
+
+  // activity events
+  actIntervalEnabled: false,
+  actInterval: { min: 0, sec: 30 },
+  actIntervalSound: 'pip',
+  actBeforeEvents: [],   // [{min, sec, sound}]
+  actCdLen: 3,           // seconds
+  actCdSound: 'pip',
+  actRingback: false,
+
+  // rest events
+  restIntervalEnabled: false,
+  restInterval: { min: 0, sec: 30 },
+  restIntervalSound: 'pip',
+  restBeforeEvents: [],
+  restCdLen: 3,
+  restCdSound: 'pip',
+  restRingback: false,
+
+  // runtime tracking
+  lastIntervalTick: 0,   // elapsed seconds since phase start when last interval fired
+  firedBefore: new Set(), // "min:sec" keys of before-events already fired this phase
+  ringbackStarted: false,
+};
+
+// working copies in settings UI
+let wk = {};
+
+// ─────────────────────────────────────────
+// TIMER LOGIC
+// ─────────────────────────────────────────
+const CIRC = 2 * Math.PI * 135; // 848.23
+
+let timerTick = null;
+
+function totalSec(minSec) { return minSec.min * 60 + minSec.sec; }
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m > 0) return `${m}:${String(s).padStart(2,'0')}`;
+  return String(s);
+}
+
+function setProgress(pct, instant) {
+  const el = document.getElementById('ring-prog');
+  if (instant) {
+    el.classList.add('instant');
+    el.style.strokeDashoffset = CIRC * (1 - pct / 100);
+    el.getBoundingClientRect();
+    el.classList.remove('instant');
+  } else {
+    el.style.strokeDashoffset = CIRC * (1 - pct / 100);
+  }
+}
+
+function startLoop() {
+  if (timerTick) clearInterval(timerTick);
+  timerTick = setInterval(tick, 1000);
+}
+
+function tick() {
+  if (!state.isActive || state.isCompleted) return;
+
+  if (state.timeLeft === 0) {
+    // phase end → switch
+    if (state.phase === 'activity') {
+      if (state.targetCycles !== null && state.completedCycles >= state.targetCycles) {
+        state.isActive = false;
+        state.isCompleted = true;
+        clearInterval(timerTick);
+        renderUI();
+        return;
+      }
+      state.phase = 'rest';
+      state.timeLeft = totalSec(state.rest);
+    } else {
+      state.phase = 'activity';
+      state.timeLeft = totalSec(state.act);
+    }
+    resetPhaseTracking();
+    setProgress(100, true);
+    renderUI();
+    return;
+  }
+
+  state.timeLeft--;
+  const phaseDur = state.phase === 'activity' ? totalSec(state.act) : totalSec(state.rest);
+  const elapsed = phaseDur - state.timeLeft;
+
+  // Countdown / ringback
+  const cdLen = state.phase === 'activity' ? state.actCdLen : state.restCdLen;
+  const cdSound = state.phase === 'activity' ? state.actCdSound : state.restCdSound;
+  const ringback = state.phase === 'activity' ? state.actRingback : state.restRingback;
+
+  if (state.timeLeft === 0) {
+    // phase finish sound
+    if (state.phase === 'activity' && state.targetCycles !== null && state.completedCycles + 1 >= state.targetCycles) {
+      playSound('fanfare');
+    } else {
+      playSound('switch');
+    }
+    if (state.phase === 'activity') state.completedCycles++;
+  } else {
+    // ringback: start when timeLeft == cdLen (if cdLen >= ringback trigger)
+    if (ringback && state.timeLeft === cdLen && !state.ringbackStarted) {
+      state.ringbackStarted = true;
+      playSound('ringback');
+    } else if (!ringback && state.timeLeft <= cdLen && state.timeLeft > 0) {
+      // normal countdown
+      const cdT = CD_SOUND_DEFS.find(d => d.id === cdSound)?.soundType || 'countdown_pip';
+      playSound(cdT);
+    }
+
+    // Interval events
+    checkIntervalEvent(elapsed);
+    // Before events
+    checkBeforeEvents();
+  }
+
+  renderUI();
+}
+
+function checkIntervalEvent(elapsed) {
+  const enabled = state.phase === 'activity' ? state.actIntervalEnabled : state.restIntervalEnabled;
+  if (!enabled) return;
+  const ivSec = state.phase === 'activity' ? totalSec(state.actInterval) : totalSec(state.restInterval);
+  const snd = state.phase === 'activity' ? state.actIntervalSound : state.restIntervalSound;
+  if (ivSec <= 0) return;
+  const expected = Math.floor(elapsed / ivSec);
+  const prev = Math.floor((elapsed - 1) / ivSec);
+  if (expected > prev && elapsed > 0) {
+    const t = SOUND_DEFS.find(d => d.id === snd)?.soundType || 'pip';
+    playSound(t);
+    state.lastIntervalTick = elapsed;
+  }
+}
+
+function checkBeforeEvents() {
+  const events = state.phase === 'activity' ? state.actBeforeEvents : state.restBeforeEvents;
+  events.forEach(ev => {
+    const key = `${ev.min}:${ev.sec}`;
+    if (!state.firedBefore.has(key) && state.timeLeft === totalSec(ev)) {
+      state.firedBefore.add(key);
+      const t = SOUND_DEFS.find(d => d.id === ev.sound)?.soundType || 'pip';
+      playSound(t);
+    }
+  });
+}
+
+function resetPhaseTracking() {
+  state.lastIntervalTick = 0;
+  state.firedBefore = new Set();
+  state.ringbackStarted = false;
+}
+
+function toggleTimer() {
+  getACtx(); // unlock audio
+  state.isActive = !state.isActive;
+  state.isStarted = true;
+  if (state.isActive) startLoop();
+  else clearInterval(timerTick);
+  renderUI();
+}
+
+function resetTimer() {
+  state.isActive = false;
+  state.isStarted = false;
+  state.isCompleted = false;
+  state.completedCycles = 0;
+  state.phase = 'activity';
+  state.timeLeft = totalSec(state.act);
+  clearInterval(timerTick);
+  resetPhaseTracking();
+  setProgress(100, true);
+  renderUI();
+}
+
+// ─────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────
+function renderUI() {
+  const body = document.body;
+  const isAct = state.phase === 'activity';
+  body.className = state.isCompleted ? 'phase-act' : (isAct ? 'phase-act' : 'phase-rest');
+
+  const timerMain = document.getElementById('timer-main');
+  const completeMain = document.getElementById('complete-main');
+
+  if (state.isCompleted) {
+    timerMain.style.display = 'none';
+    completeMain.style.display = 'flex';
+    document.getElementById('complete-val').textContent =
+      `${state.completedCycles} / ${state.targetCycles} セット`;
+    return;
+  }
+  timerMain.style.display = 'flex';
+  completeMain.style.display = 'none';
+
+  // phase label
+  document.getElementById('phase-label').textContent =
+    isAct ? '活動（アクティビティ）' : '休憩（レスト）';
+
+  // time
+  document.getElementById('time-disp').textContent = fmtTime(state.timeLeft);
+
+  // ring
+  const phaseDur = isAct ? totalSec(state.act) : totalSec(state.rest);
+  setProgress(phaseDur > 0 ? (state.timeLeft / phaseDur) * 100 : 100);
+
+  // cycle
+  document.getElementById('cycle-cur').textContent = state.completedCycles;
+  document.getElementById('cycle-total').textContent =
+    state.targetCycles === null ? '∞' : state.targetCycles;
+
+  // toggle btn
+  const icon = document.getElementById('toggle-icon');
+  const txt = document.getElementById('toggle-text');
+  if (state.isActive) {
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1" fill="white"/><rect x="14" y="4" width="4" height="16" rx="1" fill="white"/>';
+    txt.textContent = '一時停止';
+  } else {
+    icon.innerHTML = '<polygon points="6 3 20 12 6 21 6 3" fill="white"/>';
+    txt.textContent = 'スタート';
+  }
+
+  // volume icon
+  const vsvg = document.getElementById('volume-svg');
+  if (state.muted) {
+    vsvg.innerHTML = '<path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/>';
+  } else {
+    vsvg.innerHTML = '<path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>';
+  }
+}
+
+
+// ─────────────────────────────────────────
+// SETTINGS UI
+// ─────────────────────────────────────────
+function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
+
+function openSettings() {
+  wk = {
+    act: { ...state.act },
+    rest: { ...state.rest },
+    targetCycles: state.targetCycles,
+    actIntervalEnabled: state.actIntervalEnabled,
+    actInterval: { ...state.actInterval },
+    actIntervalSound: state.actIntervalSound,
+    actBeforeEvents: state.actBeforeEvents.map(e => ({ ...e })),
+    actCdLen: state.actCdLen,
+    actCdSound: state.actCdSound,
+    actRingback: state.actRingback,
+    restIntervalEnabled: state.restIntervalEnabled,
+    restInterval: { ...state.restInterval },
+    restIntervalSound: state.restIntervalSound,
+    restBeforeEvents: state.restBeforeEvents.map(e => ({ ...e })),
+    restCdLen: state.restCdLen,
+    restCdSound: state.restCdSound,
+    restRingback: state.restRingback,
+    // add-form temps
+    actBfMin: 0, actBfSec: 10, actBfSound: 'pip',
+    restBfMin: 0, restBfSec: 10, restBfSound: 'pip',
+  };
+  renderSettings();
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+
+function applySettings() {
+  state.act = { ...wk.act };
+  state.rest = { ...wk.rest };
+  state.targetCycles = wk.targetCycles;
+  state.actIntervalEnabled = wk.actIntervalEnabled;
+  state.actInterval = { ...wk.actInterval };
+  state.actIntervalSound = wk.actIntervalSound;
+  state.actBeforeEvents = wk.actBeforeEvents.map(e => ({ ...e }));
+  state.actCdLen = wk.actCdLen;
+  state.actCdSound = wk.actCdSound;
+  state.actRingback = wk.actRingback;
+  state.restIntervalEnabled = wk.restIntervalEnabled;
+  state.restInterval = { ...wk.restInterval };
+  state.restIntervalSound = wk.restIntervalSound;
+  state.restBeforeEvents = wk.restBeforeEvents.map(e => ({ ...e }));
+  state.restCdLen = wk.restCdLen;
+  state.restCdSound = wk.restCdSound;
+  state.restRingback = wk.restRingback;
+
+  if (!state.isStarted) {
+    state.timeLeft = totalSec(state.phase === 'activity' ? state.act : state.rest);
+  }
+  closeSettings();
+  renderUI();
+}
+
+function renderSettings() {
+  // time steppers
+  document.getElementById('act-min-val').textContent = wk.act.min;
+  document.getElementById('act-sec-val').textContent = wk.act.sec;
+  document.getElementById('rest-min-val').textContent = wk.rest.min;
+  document.getElementById('rest-sec-val').textContent = wk.rest.sec;
+
+  // cycle
+  document.getElementById('cycle-val-disp').textContent = wk.targetCycles === null ? '∞' : wk.targetCycles;
+
+  // cycle presets
+  renderChips('cycle-presets', [null,1,3,5,10], wk.targetCycles,
+    v => { wk.targetCycles = v; renderSettings(); }, v => v === null ? 'なし' : `${v}回`, 'preset');
+
+  // act presets
+  renderTimePresets('act-presets', wk.act, v => { wk.act = v; renderSettings(); });
+  renderTimePresets('rest-presets', wk.rest, v => { wk.rest = v; renderSettings(); });
+
+  // act interval
+  const aie = document.getElementById('act-interval-enabled');
+  aie.checked = wk.actIntervalEnabled;
+  const aiOpts = document.getElementById('act-interval-opts');
+  aiOpts.style.display = wk.actIntervalEnabled ? 'flex' : 'none';
+  document.getElementById('act-iv-min').textContent = wk.actInterval.min;
+  document.getElementById('act-iv-sec').textContent = wk.actInterval.sec;
+  renderChips('act-iv-sound', SOUND_DEFS, wk.actIntervalSound,
+    v => { wk.actIntervalSound = v; renderSettings(); }, d => d.label, 'sound');
+
+  // act before events list
+  renderBeforeList('act-before-list', wk.actBeforeEvents, () => renderSettings());
+  document.getElementById('act-bf-min').textContent = wk.actBfMin;
+  document.getElementById('act-bf-sec').textContent = wk.actBfSec;
+  renderChips('act-bf-sound', SOUND_DEFS, wk.actBfSound,
+    v => { wk.actBfSound = v; renderSettings(); }, d => d.label, 'sound');
+
+  // act cd
+  renderChips('act-cd-len', [0,3,5,10,30], wk.actCdLen,
+    v => { wk.actCdLen = v; renderSettings(); }, v => v === 0 ? 'なし' : `${v}秒`, 'preset');
+  renderChips('act-cd-sound', CD_SOUND_DEFS, wk.actCdSound,
+    v => { wk.actCdSound = v; renderSettings(); }, d => d.label, 'sound');
+  document.getElementById('act-ringback-enabled').checked = wk.actRingback;
+
+  // rest interval
+  const rie = document.getElementById('rest-interval-enabled');
+  rie.checked = wk.restIntervalEnabled;
+  const riOpts = document.getElementById('rest-interval-opts');
+  riOpts.style.display = wk.restIntervalEnabled ? 'flex' : 'none';
+  document.getElementById('rest-iv-min').textContent = wk.restInterval.min;
+  document.getElementById('rest-iv-sec').textContent = wk.restInterval.sec;
+  renderChips('rest-iv-sound', SOUND_DEFS, wk.restIntervalSound,
+    v => { wk.restIntervalSound = v; renderSettings(); }, d => d.label, 'sound');
+
+  renderBeforeList('rest-before-list', wk.restBeforeEvents, () => renderSettings());
+  document.getElementById('rest-bf-min').textContent = wk.restBfMin;
+  document.getElementById('rest-bf-sec').textContent = wk.restBfSec;
+  renderChips('rest-bf-sound', SOUND_DEFS, wk.restBfSound,
+    v => { wk.restBfSound = v; renderSettings(); }, d => d.label, 'sound');
+
+  renderChips('rest-cd-len', [0,3,5,10,30], wk.restCdLen,
+    v => { wk.restCdLen = v; renderSettings(); }, v => v === 0 ? 'なし' : `${v}秒`, 'preset');
+  renderChips('rest-cd-sound', CD_SOUND_DEFS, wk.restCdSound,
+    v => { wk.restCdSound = v; renderSettings(); }, d => d.label, 'sound');
+  document.getElementById('rest-ringback-enabled').checked = wk.restRingback;
+}
+
+function renderChips(containerId, items, currentVal, onSelect, labelFn, style) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  items.forEach(item => {
+    const val = typeof item === 'object' && item !== null ? item.id : item;
+    const label = labelFn(item);
+    const btn = document.createElement('button');
+    btn.className = (style === 'preset' ? 'preset-chip' : 'sound-chip') + (currentVal === val ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => onSelect(val));
+    el.appendChild(btn);
+  });
+}
+
+function renderTimePresets(containerId, cur, onSelect) {
+  const presets = [
+    { label: '30秒', min: 0, sec: 30 },
+    { label: '1分', min: 1, sec: 0 },
+    { label: '5分', min: 5, sec: 0 },
+    { label: '10分', min: 10, sec: 0 },
+    { label: '30分', min: 30, sec: 0 },
+    { label: '60分', min: 60, sec: 0 },
+  ];
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  presets.forEach(p => {
+    const btn = document.createElement('button');
+    const active = cur.min === p.min && cur.sec === p.sec;
+    btn.className = 'preset-chip' + (active ? ' active' : '');
+    btn.textContent = p.label;
+    btn.addEventListener('click', () => onSelect({ min: p.min, sec: p.sec }));
+    el.appendChild(btn);
+  });
+}
+
+function renderBeforeList(containerId, events, onUpdate) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  if (events.length === 0) return;
+  events.forEach((ev, i) => {
+    const row = document.createElement('div');
+    row.className = 'event-item';
+    const secStr = ev.min > 0 ? `${ev.min}分${ev.sec > 0 ? ev.sec + '秒' : ''}前` : `${ev.sec}秒前`;
+    const sndLabel = SOUND_DEFS.find(d => d.id === ev.sound)?.label || ev.sound;
+    row.innerHTML = `
+      <div class="event-item-label">残り ${secStr}<div class="event-item-sub">音：${sndLabel}</div></div>
+      <button class="event-delete" data-i="${i}">×</button>
+    `;
+    row.querySelector('.event-delete').addEventListener('click', () => {
+      events.splice(i, 1);
+      onUpdate();
+    });
+    el.appendChild(row);
+  });
+}
+
+// ─────────────────────────────────────────
+// MINI STEPPER HELPERS
+// ─────────────────────────────────────────
+function miniStep(id, delta, min, max) {
+  const el = document.getElementById(id);
+  let v = parseInt(el.textContent) || 0;
+  v = Math.max(min, Math.min(max, v + delta));
+  el.textContent = v;
+  return v;
+}
+
+// ─────────────────────────────────────────
+// EVENT LISTENERS
+// ─────────────────────────────────────────
+
+// top bar
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('btn-volume').addEventListener('click', () => {
+  state.muted = !state.muted;
+  renderUI();
+});
+document.getElementById('btn-toggle').addEventListener('click', toggleTimer);
+document.getElementById('btn-reset').addEventListener('click', resetTimer);
+document.getElementById('btn-restart').addEventListener('click', resetTimer);
+
+// modal
+document.getElementById('btn-close-settings').addEventListener('click', closeSettings);
+document.getElementById('btn-apply-settings').addEventListener('click', applySettings);
+
+// stepper buttons (time pickers)
+document.querySelectorAll('.step-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.target;
+    const delta = parseInt(btn.dataset.delta);
+    const [phase, unit] = target.split('-'); // 'act'/'rest', 'min'/'sec'
+    if (unit === 'min') {
+      wk[phase].min = Math.max(0, Math.min(180, wk[phase].min + delta));
+    } else {
+      wk[phase].sec = Math.max(0, Math.min(59, wk[phase].sec + delta));
+    }
+    if (wk[phase].min === 0 && wk[phase].sec < 1) wk[phase].sec = 1;
+    document.getElementById(`${target}-val`).textContent =
+      unit === 'min' ? wk[phase].min : wk[phase].sec;
+    // refresh presets
+    renderTimePresets(`${phase}-presets`, wk[phase], v => { wk[phase] = v; renderSettings(); });
+  });
+});
+
+// cycle
+document.getElementById('cycle-minus').addEventListener('click', () => {
+  if (wk.targetCycles === null) wk.targetCycles = 1;
+  else if (wk.targetCycles <= 1) wk.targetCycles = null;
+  else wk.targetCycles--;
+  renderSettings();
+});
+document.getElementById('cycle-plus').addEventListener('click', () => {
+  if (wk.targetCycles === null) wk.targetCycles = 1;
+  else wk.targetCycles++;
+  renderSettings();
+});
+
+// act interval toggle
+document.getElementById('act-interval-enabled').addEventListener('change', e => {
+  wk.actIntervalEnabled = e.target.checked;
+  document.getElementById('act-interval-opts').style.display = wk.actIntervalEnabled ? 'flex' : 'none';
+});
+// act interval steppers
+['act-iv-min', 'act-iv-sec'].forEach(id => {
+  const [,, part] = id.split('-');
+  document.getElementById(id + '-minus').addEventListener('click', () => {
+    const v = miniStep(id, -1, 0, part === 'min' ? 60 : 59);
+    wk.actInterval[part === 'min' ? 'min' : 'sec'] = v;
+  });
+  document.getElementById(id + '-plus').addEventListener('click', () => {
+    const v = miniStep(id, 1, 0, part === 'min' ? 60 : 59);
+    wk.actInterval[part === 'min' ? 'min' : 'sec'] = v;
+  });
+});
+
+// act before events steppers
+['act-bf-min','act-bf-sec'].forEach(id => {
+  const part = id.endsWith('min') ? 'min' : 'sec';
+  document.getElementById(id + '-minus').addEventListener('click', () => {
+    const v = miniStep(id, -1, 0, part === 'min' ? 60 : 59);
+    wk.actBfMin = id.endsWith('min') ? v : wk.actBfMin;
+    wk.actBfSec = id.endsWith('sec') ? v : wk.actBfSec;
+  });
+  document.getElementById(id + '-plus').addEventListener('click', () => {
+    const v = miniStep(id, 1, 0, part === 'min' ? 60 : 59);
+    wk.actBfMin = id.endsWith('min') ? v : wk.actBfMin;
+    wk.actBfSec = id.endsWith('sec') ? v : wk.actBfSec;
+  });
+});
+document.getElementById('act-bf-add').addEventListener('click', () => {
+  const sec = totalSec({ min: wk.actBfMin, sec: wk.actBfSec });
+  if (sec > 0 && !wk.actBeforeEvents.find(e => totalSec(e) === sec)) {
+    wk.actBeforeEvents.push({ min: wk.actBfMin, sec: wk.actBfSec, sound: wk.actBfSound });
+    wk.actBeforeEvents.sort((a, b) => totalSec(b) - totalSec(a));
+    renderSettings();
+  }
+});
+
+// act ringback
+document.getElementById('act-ringback-enabled').addEventListener('change', e => {
+  wk.actRingback = e.target.checked;
+});
+
+// rest interval toggle
+document.getElementById('rest-interval-enabled').addEventListener('change', e => {
+  wk.restIntervalEnabled = e.target.checked;
+  document.getElementById('rest-interval-opts').style.display = wk.restIntervalEnabled ? 'flex' : 'none';
+});
+['rest-iv-min','rest-iv-sec'].forEach(id => {
+  const part = id.endsWith('min') ? 'min' : 'sec';
+  document.getElementById(id + '-minus').addEventListener('click', () => {
+    const v = miniStep(id, -1, 0, part === 'min' ? 60 : 59);
+    wk.restInterval[part === 'min' ? 'min' : 'sec'] = v;
+  });
+  document.getElementById(id + '-plus').addEventListener('click', () => {
+    const v = miniStep(id, 1, 0, part === 'min' ? 60 : 59);
+    wk.restInterval[part === 'min' ? 'min' : 'sec'] = v;
+  });
+});
+
+['rest-bf-min','rest-bf-sec'].forEach(id => {
+  document.getElementById(id + '-minus').addEventListener('click', () => {
+    const v = miniStep(id, -1, 0, id.endsWith('min') ? 60 : 59);
+    wk.restBfMin = id.endsWith('min') ? v : wk.restBfMin;
+    wk.restBfSec = id.endsWith('sec') ? v : wk.restBfSec;
+  });
+  document.getElementById(id + '-plus').addEventListener('click', () => {
+    const v = miniStep(id, 1, 0, id.endsWith('min') ? 60 : 59);
+    wk.restBfMin = id.endsWith('min') ? v : wk.restBfMin;
+    wk.restBfSec = id.endsWith('sec') ? v : wk.restBfSec;
+  });
+});
+document.getElementById('rest-bf-add').addEventListener('click', () => {
+  const sec = totalSec({ min: wk.restBfMin, sec: wk.restBfSec });
+  if (sec > 0 && !wk.restBeforeEvents.find(e => totalSec(e) === sec)) {
+    wk.restBeforeEvents.push({ min: wk.restBfMin, sec: wk.restBfSec, sound: wk.restBfSound });
+    wk.restBeforeEvents.sort((a, b) => totalSec(b) - totalSec(a));
+    renderSettings();
+  }
+});
+document.getElementById('rest-ringback-enabled').addEventListener('change', e => {
+  wk.restRingback = e.target.checked;
+});
+
+// Preview buttons
+function setupPreview(btnId, getSoundType) {
+  document.getElementById(btnId).addEventListener('click', () => {
+    const t = getSoundType();
+    if (t) playSound(t);
+  });
+}
+setupPreview('act-iv-preview', () => SOUND_DEFS.find(d => d.id === wk.actIntervalSound)?.soundType);
+setupPreview('act-bf-preview', () => SOUND_DEFS.find(d => d.id === wk.actBfSound)?.soundType);
+setupPreview('act-cd-preview', () => CD_SOUND_DEFS.find(d => d.id === wk.actCdSound)?.soundType);
+setupPreview('rest-iv-preview', () => SOUND_DEFS.find(d => d.id === wk.restIntervalSound)?.soundType);
+setupPreview('rest-bf-preview', () => SOUND_DEFS.find(d => d.id === wk.restBfSound)?.soundType);
+setupPreview('rest-cd-preview', () => CD_SOUND_DEFS.find(d => d.id === wk.restCdSound)?.soundType);
+
+// ─────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────
+resetTimer();
+</script>
+</body>
+</html>

@@ -279,8 +279,9 @@ ruby rt { font-size: .5em; font-weight: 400; letter-spacing: 0; }
         stroke-dasharray="848.23" stroke-dashoffset="0" transform="rotate(-90 150 150)"/>
     </svg>
     <div class="ring-center">
-      <div class="ring-label">のこり</div>
+      <div class="ring-label" id="ring-label">のこり</div>
       <div class="time-disp" id="time-disp">30</div>
+      <div class="ring-label" id="ring-target" hidden></div>
     </div>
   </div>
   <div class="sets">
@@ -360,7 +361,7 @@ function phaseDefault(P) {
            dur: { min: 0, sec: 30 }, ivOn: false, iv: { min: 0, sec: 30 }, ivSound: 'pip',
            beforeOn: false, before: [], cdOn: false, cdLen: 3, cdSound: 'pip', ringback: false, endSound: 'switch' };
 }
-function defaultSettings() { return { cycles: 3, speakOn: false, ph: { act: phaseDefault('act'), rest: phaseDefault('rest') } }; }
+function defaultSettings() { return { cycles: 3, countUp: false, speakOn: false, ph: { act: phaseDefault('act'), rest: phaseDefault('rest') } }; }
 
 function cleanText(v, max, def) {
   v = typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -396,6 +397,7 @@ function sanitizeSettings(s) {
   return {
     cycles: s.cycles === null ? null : clampInt(s.cycles, 1, 99, d.cycles),
     speakOn: !!s.speakOn,
+    countUp: !!s.countUp,
     ph: { act: sanitizePhase(s.ph && s.ph.act, d.ph.act), rest: sanitizePhase(s.ph && s.ph.rest, d.ph.rest) },
   };
 }
@@ -701,14 +703,22 @@ let lastShown = null;
 function renderClock() {
   const durMs = phaseDurSec() * 1000;
   const remMs = Math.max(0, durMs - state.elapsedMs);
-  const remSec = Math.ceil(remMs / 1000);
-  if (remSec !== lastShown) { lastShown = remSec; timeEl.textContent = fmtTime(remSec); }
+  const up = state.settings.countUp;
+  // カウントダウン：のこりの秒数 / カウントアップ：たった秒数
+  const shown = up ? Math.min(phaseDurSec(), Math.floor(state.elapsedMs / 1000)) : Math.ceil(remMs / 1000);
+  if (shown !== lastShown) { lastShown = shown; timeEl.textContent = fmtTime(shown); }
   const frac = durMs > 0 ? remMs / durMs : 1;
-  ringEl.style.strokeDashoffset = CIRC * (1 - frac);
+  // カウントダウンはリングがへっていき、カウントアップはふえていく
+  ringEl.style.strokeDashoffset = up ? CIRC * frac : CIRC * (1 - frac);
 }
 
 function renderPhase() {
   const isAct = state.phase === 'act' || state.isCompleted;
+  const up = state.settings.countUp;
+  $('#ring-label').textContent = up ? 'けいか' : 'のこり';
+  const tg = $('#ring-target');
+  tg.hidden = !up;
+  if (up) tg.textContent = `${fmtDur(phaseCfg().dur)}まで`;
   document.body.className = isAct ? 'phase-act' : 'phase-rest';
   $('#phase-pill').innerHTML = nameHTML(isAct ? 'act' : 'rest', state.settings);
   lastShown = null;
@@ -848,6 +858,10 @@ function buildSettings() {
         <p class="note">「きめない」にすると、とめるまでずっとくりかえすよ。</p>
       </div>
       <div class="card">
+        <div class="row"><div class="row-label">${R('数字', 'すうじ')}の${R('増減', 'ぞうげん')}</div>
+          <div class="row-ctl">${chipsHTML('count', [['down', 'カウントダウン'], ['up', 'カウントアップ']])}</div></div>
+      </div>
+      <div class="card">
         <div class="row">${switchHTML('speak', `${R('切', 'き')}りかわるときに${R('読', 'よ')}み${R('上', 'あ')}げる`,
           `${R('読', 'よ')}み${R('上', 'あ')}げることばは、${R('下', 'した')}のそれぞれの${R('時間', 'じかん')}で${R('決', 'き')}められるよ`)}</div>
       </div>
@@ -879,6 +893,7 @@ function splitGroup(g) {
 }
 function chipValue(group) {
   if (group === 'cycles') return wk.cycles === null ? 'none' : String(wk.cycles);
+  if (group === 'count') return wk.countUp ? 'up' : 'down';
   const [P, k] = splitGroup(group), p = wk.ph[P];
   switch (k) {
     case 'preset':   return `${p.dur.min}:${p.dur.sec}`;
@@ -892,6 +907,7 @@ function chipValue(group) {
 }
 function onChip(group, value) {
   if (group === 'cycles') { wk.cycles = value === 'none' ? null : parseInt(value, 10); return; }
+  if (group === 'count') { wk.countUp = value === 'up'; return; }
   const [P, k] = splitGroup(group), p = wk.ph[P];
   switch (k) {
     case 'preset': { const [m, s] = value.split(':').map(Number); p.dur = { min: m, sec: s }; break; }
